@@ -29,7 +29,9 @@ from qiskit_experiments.framework.base_analysis import BaseAnalysis
 from qiskit_experiments.framework.experiment_data import ExperimentData
 from qiskit_experiments.framework.configs import ExperimentConfig
 from qiskit_experiments.warnings import deprecate_arguments
+from qiskit.compiler import assemble
 
+import qiskit_ibm_runtime
 
 class BaseExperiment(ABC, StoreInitArgs):
     """Abstract base class for experiments."""
@@ -72,6 +74,7 @@ class BaseExperiment(ABC, StoreInitArgs):
         self._set_transpile_options = set()
         self._set_run_options = set()
         self._set_analysis_options = set()
+        self._program_id = 'circuit-runner'
 
         # Set analysis
         self._analysis = None
@@ -150,6 +153,7 @@ class BaseExperiment(ABC, StoreInitArgs):
         ret._set_experiment_options = copy.copy(self._set_experiment_options)
         ret._set_transpile_options = copy.copy(self._set_transpile_options)
         ret._set_run_options = copy.copy(self._set_run_options)
+        ret._program_id = self._program_id
         return ret
 
     def config(self) -> ExperimentConfig:
@@ -171,6 +175,7 @@ class BaseExperiment(ABC, StoreInitArgs):
             experiment_options=experiment_options,
             transpile_options=transpile_options,
             run_options=run_options,
+            program_id=self._program_id
         )
 
     @classmethod
@@ -185,6 +190,8 @@ class BaseExperiment(ABC, StoreInitArgs):
             ret.set_transpile_options(**config.transpile_options)
         if config.run_options:
             ret.set_run_options(**config.run_options)
+        if config.program_id:
+            ret.set_program_id(config.program_id)
         return ret
 
     def run(
@@ -288,10 +295,27 @@ class BaseExperiment(ABC, StoreInitArgs):
             # Run as single job
             job_circuits = [circuits]
 
-        # Run jobs
-        jobs = [self.backend.run(circs, **run_options) for circs in job_circuits]
-
-        return jobs
+        # backwards compatibility with backend.run
+        runtime_options = copy.copy(run_options)
+        runtime_options['skip_transpilation'] = True
+        runtime_options['shots']=50
+        def run_jobs(session, backend, job_circuits, runtime_options):
+            print(runtime_options)
+            # Run jobs        
+            jobs = []
+            for circs in job_circuits:
+                runtime_options['circuits'] = assemble(circs, backend=backend,
+                meas_level = runtime_options.get('meas_level',1),
+                memory=runtime_options.get('memory', True),
+                shots = runtime_options.get('shots',50)).to_dict()
+                jobs.append(session.run(program_id=self._program_id,inputs=runtime_options))
+            return jobs
+    
+        if isinstance(self.backend, qiskit_ibm_runtime.session.Session):
+            return run_jobs(self.backend, self.backend.backend, job_circuits, runtime_options)
+        else:
+            with qiskit_ibm_runtime.Session(self.backend.service, self.backend) as session:
+                return run_jobs(session, self.backend, job_circuits, runtime_options)
 
     @abstractmethod
     def circuits(self) -> List[QuantumCircuit]:
@@ -392,7 +416,8 @@ class BaseExperiment(ABC, StoreInitArgs):
     @classmethod
     def _default_run_options(cls) -> Options:
         """Default options values for the experiment :meth:`run` method."""
-        return Options(meas_level=MeasLevel.CLASSIFIED)
+        return Options(meas_level=MeasLevel.CLASSIFIED,
+                       program_id='circuit-runner')
 
     @property
     def run_options(self) -> Options:
@@ -409,6 +434,9 @@ class BaseExperiment(ABC, StoreInitArgs):
         """
         self._run_options.update_options(**fields)
         self._set_run_options = self._set_run_options.union(fields)
+
+    def set_program_id(self, program_id):
+        self._program_id = program_id
 
     def _metadata(self) -> Dict[str, any]:
         """Return experiment metadata for ExperimentData.

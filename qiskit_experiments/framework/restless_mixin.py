@@ -29,6 +29,9 @@ LOG = logging.getLogger(__name__)
 
 
 class RestlessMixin:
+    pass
+
+class foo:
     """A mixin to facilitate restless experiments.
 
     This class defines the following methods:

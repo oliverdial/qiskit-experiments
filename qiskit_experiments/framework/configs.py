@@ -39,6 +39,7 @@ class ExperimentConfig:
     experiment_options: Dict[str, Any] = dataclasses.field(default_factory=dict)
     transpile_options: Dict[str, Any] = dataclasses.field(default_factory=dict)
     run_options: Dict[str, Any] = dataclasses.field(default_factory=dict)
+    program_id: str = 'circuit_runner'
     version: str = __version__
 
     def experiment(self):

@@ -180,7 +180,7 @@ class SVD(TrainableDataAction):
         self._n_shots = 0
         self._n_slots = 0
         self._n_iq = 0
-
+        print(data, 555)
         # identify shape
         try:
             # level1 single-shot data
@@ -190,9 +190,13 @@ class SVD(TrainableDataAction):
                 # level1 data averaged over shots
                 self._n_circs, self._n_slots, self._n_iq = data.shape
             except ValueError as ex:
-                raise DataProcessorError(
-                    f"Data given to {self.__class__.__name__} is not likely level1 data."
-                ) from ex
+                try:
+                    self._n_circs, self._n_iq = data.shape
+                    self._n_slots = 1
+                except:
+                    raise DataProcessorError(
+                        f"Data given to {self.__class__.__name__} is not likely level1 data."
+                    ) from ex
 
         if self._validate:
             if self._n_iq != 2:
